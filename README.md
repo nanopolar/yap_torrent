@@ -17,6 +17,8 @@ It's aimed to be simple, easy to use and extend.
 * SimpleUI (plugin)
 * Web UI (plugin)
 * Transmission RPC server (plugin) — drive it from existing Transmission remotes
+* Leech-only by default — no data is uploaded to other peers. Set `"upload_enabled": true`
+  in `config.json` to seed again.
 
 ---
 

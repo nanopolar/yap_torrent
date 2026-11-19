@@ -364,7 +364,7 @@ def calculate_candidates(env, now):
 			if dv:
 				download_candidates.append((dv, peer_entity))
 
-		if upload_size < upload_limit:
+		if env.config.upload_enabled and upload_size < upload_limit:
 			uv = upload_value(torrent_entity, peer_entity)
 			if uv > 0 and now - peer_entity.get_component(PeerEC).last_attempt >= cooldown:
 				upload_candidates.append((uv, peer_entity))

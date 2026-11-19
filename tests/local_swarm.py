@@ -8,6 +8,7 @@ and drives the tick loop over real sockets. Scenarios:
   2. paused seeder          an Inactive seeder uploads nothing
   3. partial selection      leecher with an unwanted file downloads only wanted pieces
   4. peer state machine     a failed connect moves a peer Unknown -> Questionable
+  5. leech-only seeder      a client with upload_enabled=false uploads nothing
 
 Run:  python tests/local_swarm.py     (exits 0 if all scenarios pass)
 """
@@ -92,7 +93,8 @@ def write_files(root: Path, info, content: bytes):
 
 # --- instance harness ------------------------------------------------------
 class Instance:
-	def __init__(self, port: int, root: Path, peer_id: bytes, dht: bool = False, persist: bool = False):
+	def __init__(self, port: int, root: Path, peer_id: bytes, dht: bool = False, persist: bool = False,
+	             upload: bool = True):
 		"""One client. `persist` adds the systems a real session has for state that outlives it.
 
 		Without it a scenario drives the engine directly (create_torrent_entity + a bitfield
@@ -108,6 +110,7 @@ class Instance:
 		cfg.peers_file = str(root / "peers.dat")
 		cfg.port = port
 		cfg.dht_port = port + 1000
+		cfg.upload_enabled = upload  # the swarm needs seeders; core defaults to leech-only
 		cfg.download_folder.mkdir(parents=True, exist_ok=True)
 
 		self.env = Env(peer_id, "127.0.0.1", "127.0.0.1", cfg)
@@ -225,6 +228,39 @@ async def scenario_paused_seeder(work: Path) -> bool:
 	await leecher.stop();
 	await seeder.stop()
 	return (not completed) and uploaded == 0
+
+
+async def scenario_leech_only_seeder(work: Path) -> bool:
+	# a client that has every piece but upload_enabled=false must never send a block
+	content = __import__("os").urandom(20000)
+	meta = single_file(content)
+	ih = meta.make_info_hash()
+
+	seeder = Instance(6831, work / "s_lo_seed", b"-PY0001-SEEDER00LO01", upload=False)
+	leecher = Instance(6832, work / "s_lo_leech", b"-PY0001-LEECHER0LO01")
+	write_files(seeder.env.config.download_folder, meta.info, content)
+	await seeder.start();
+	await leecher.start()
+
+	seed = create_torrent_entity(seeder.env, ih, seeder.env.config.download_folder, {}, meta.info)
+	for i in range(meta.info.pieces_num):
+		seed.get_component(TorrentEC).bitfield.set_index(i)
+	create_torrent_entity(leecher.env, ih, leecher.env.config.download_folder, {}, meta.info)
+
+	await settle([seeder, leecher], 3)
+	leecher.env.event_bus.dispatch("peers.update", ih, [PeerInfo("127.0.0.1", 6831)])
+	leech = get_torrent_entity(leecher.env, ih)
+
+	connected = await run_until([seeder, leecher],
+	                            lambda: any(True for _ in iterate_connected_peers(seeder.env, ih)), rounds=40)
+	await settle([seeder, leecher], 20, sleep=0.1)
+	ok = (connected
+	      and seed.get_component(TorrentStatsEC).uploaded == 0
+	      and not is_torrent_complete(leech)
+	      and leech.get_component(TorrentStatsEC).downloaded == 0)
+	await leecher.stop();
+	await seeder.stop()
+	return ok
 
 
 async def scenario_partial_selection(work: Path) -> bool:
@@ -775,6 +811,7 @@ def _peer_records(path: Path):
 SCENARIOS = [
 	("basic transfer", scenario_basic_transfer),
 	("paused seeder uploads nothing", scenario_paused_seeder),
+	("leech-only seeder (upload_enabled=false) uploads nothing", scenario_leech_only_seeder),
 	("partial file selection completes", scenario_partial_selection),
 	("peer state machine on failed connect", scenario_peer_state_machine),
 	("multi-leecher swarm (upload while incomplete)", scenario_multi_leecher),

@@ -100,6 +100,8 @@ class UploadSystem(System):
 			torrent_entity.get_component(TorrentStatsEC).update_uploaded(len(data))
 
 	def _may_serve(self, torrent_entity: Entity, peer_entity: Entity) -> bool:
+		if not self.env.config.upload_enabled:
+			return False
 		if not is_torrent_active(torrent_entity):
 			return False
 		if not (peer_entity.is_valid() and peer_entity.has_component(PeerConnectionEC)):

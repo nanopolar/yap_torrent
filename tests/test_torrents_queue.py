@@ -35,6 +35,7 @@ PIECES = 4
 
 def _env(download_limit: int = 8, upload_limit: int = 4) -> Env:
 	env = Env(b"-PY0001-111111111111", "127.0.0.1", "127.0.0.1", Config(path="__none__.json"))
+	env.config.upload_enabled = True  # these tests exercise the seeding side
 	env.config.download_peers_limit = download_limit
 	env.config.upload_peers_limit = upload_limit
 	return env
@@ -304,3 +305,39 @@ def test_a_connected_peer_is_not_a_candidate_again():
 
 	peer.add_component(PeerConnectionInProgressEC())
 	assert calculate_candidates(env, time.monotonic()) == set()
+
+
+def test_no_peer_is_unchoked_when_uploading_is_off():
+	async def run():
+		env = _env(upload_limit=4)
+		env.config.upload_enabled = False
+		a = _make(env, "a", position=0)
+		pa = _connect(a, _peer(env, a, 6801), interested_in_us=True)
+		pb = _connect(a, _peer(env, a, 6802), interested_in_us=True)
+
+		system = ChokeSystem(env)
+		await system.start()
+		await system._recompute()
+
+		assert not pa.has_component(LocalUnchokedEC)
+		assert not pb.has_component(LocalUnchokedEC)
+
+	asyncio.run(run())
+
+
+def test_turning_uploading_off_chokes_peers_already_unchoked():
+	async def run():
+		env = _env(upload_limit=4)
+		a = _make(env, "a", position=0)
+		pa = _connect(a, _peer(env, a, 6801), interested_in_us=True)
+
+		system = ChokeSystem(env)
+		await system.start()
+		await system._recompute()
+		assert pa.has_component(LocalUnchokedEC)
+
+		env.config.upload_enabled = False
+		await system._recompute()
+		assert not pa.has_component(LocalUnchokedEC)
+
+	asyncio.run(run())

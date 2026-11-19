@@ -69,6 +69,9 @@ class Config:
 
 		self.download_peers_limit: int = int(data.get("download_peers_limit", 8))
 		self.upload_peers_limit: int = int(data.get("upload_peers_limit", 4))
+		# leech-only by default: never unchoke a peer, never answer a REQUEST, never dial a
+		# peer just to upload to it. Set "upload_enabled": true in config.json to seed again.
+		self.upload_enabled: bool = as_bool(data.get("upload_enabled", False))
 
 		self.peer_idle_timeout: float = float(data.get("peer_idle_timeout", 30))
 		self.upload_retry_cooldown: float = float(data.get("upload_retry_cooldown", 300))

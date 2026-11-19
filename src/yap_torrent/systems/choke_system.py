@@ -78,12 +78,19 @@ class ChokeSystem(TimeSystem, System):
 			await self.env.event_bus.dispatch_async("peer.local.choked_changed", torrent_entity, peer_entity)
 
 	async def _recompute(self, *args, **kwargs):
+		upload_enabled = self.env.config.upload_enabled
 		remaining = self.env.config.upload_peers_limit
 
 		for torrent_entity in iterate_torrents_in_queue_order(self.env):
 			peers = [e for e in iterate_connected_peers(self.env, get_info_hash(torrent_entity))
 			         if not e.has_component(PeerDisconnectedEC)]
 			if not peers:
+				continue
+
+			if not upload_enabled:
+				# uploading is off: keep (or put) every peer choked
+				for peer_entity in peers:
+					await self._set_unchoked(torrent_entity, peer_entity, False)
 				continue
 
 			contenders = [e for e in peers if e.has_component(RemoteInterestedEC)]

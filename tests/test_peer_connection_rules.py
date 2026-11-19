@@ -185,6 +185,7 @@ def _candidates(env, _torrent, now, free_download=8, free_upload=4):
 def test_upload_only_prospect_waits_for_the_cooldown():
 	# a peer that told us nothing scores only on upload, so redialling it is a guess
 	env, torrent, peer = _torrent_and_peer(local_pieces=(0, 1), remote_pieces=())
+	env.config.upload_enabled = True
 	cooldown = env.config.upload_retry_cooldown
 	now = time.monotonic()
 
@@ -354,3 +355,11 @@ def test_torrent_without_metadata_has_no_pieces_to_judge():
 	env = _env()
 	torrent = create_torrent_entity(env, b"\x01" * 20, Path("."), {})
 	assert not torrent.has_component(TorrentInfoEC)
+
+
+def test_upload_only_prospect_is_never_dialled_when_uploading_is_off():
+	# leech-only (the default): a peer we could only upload to is not worth a connection
+	env, torrent, peer = _torrent_and_peer(local_pieces=(0, 1), remote_pieces=())
+	assert not env.config.upload_enabled
+	now = time.monotonic()
+	assert peer not in _candidates(env, torrent, now + env.config.upload_retry_cooldown * 10)

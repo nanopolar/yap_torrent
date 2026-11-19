@@ -31,8 +31,10 @@ PIECE_LENGTH = 16384 * 2
 PIECES = 4
 
 
-def _env() -> Env:
-	return Env(b"-PY0001-111111111111", "127.0.0.1", "127.0.0.1", Config(path="__none__.json"))
+def _env(upload_enabled: bool = True) -> Env:
+	env = Env(b"-PY0001-111111111111", "127.0.0.1", "127.0.0.1", Config(path="__none__.json"))
+	env.config.upload_enabled = upload_enabled  # most tests here are about serving
+	return env
 
 
 def _torrent(env: Env):
@@ -199,3 +201,26 @@ def test_a_choked_peer_is_not_served():
 		assert _sent(peer) == []
 
 	asyncio.run(run())
+
+
+def test_nothing_is_served_when_uploading_is_off():
+	# even a peer that is somehow unchoked gets no PIECE while upload_enabled is false
+	async def run():
+		env = _env(upload_enabled=False)
+		torrent = _torrent(env)
+		peer = _peer(env, torrent, 6801, unchoked=True)
+		_cached_piece(env, torrent, 0)
+
+		system = UploadSystem(env)
+		await system.start()
+		await system._on_request(torrent, peer, _request(0, 0, MAX_BLOCK_SIZE))
+
+		assert _sent(peer) == []
+		assert peer.get_component(PeerStatsEC).uploaded == 0
+		assert torrent.get_component(TorrentStatsEC).uploaded == 0
+
+	asyncio.run(run())
+
+
+def test_uploading_is_off_by_default():
+	assert Config(path="__none__.json").upload_enabled is False
