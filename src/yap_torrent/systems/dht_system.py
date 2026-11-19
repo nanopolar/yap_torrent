@@ -24,6 +24,7 @@ from yap_torrent.protocol import extensions
 from yap_torrent.protocol.connection import Message
 from yap_torrent.protocol.extensions import check_extension
 from yap_torrent.protocol.structures import PeerInfo
+from yap_torrent.systems import get_torrent_entity, is_torrent_active
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,10 @@ class DHTSystem(System, DHTServerProtocolHandler):
 			self.add_task(self._ping_new_host(host, port))
 		elif self.pending_torrents:
 			info_hash = self.pending_torrents.pop(0)
-			self.add_task(self._find_peers(info_hash))
+			if self._is_stopped(info_hash):
+				logger.debug("Skipping DHT lookup for stopped torrent %s", info_hash.hex())
+			else:
+				self.add_task(self._find_peers(info_hash))
 		return await System._update(self, delta_time)
 
 	async def __on_peer_connected(self, _: Entity, peer_entity: Entity) -> None:
@@ -141,6 +145,11 @@ class DHTSystem(System, DHTServerProtocolHandler):
 		port = msg.payload_port(message)
 		peer_info = peer_entity.get_component(PeerConnectionEC).peer_info
 		self._add_node(bytes(), peer_info.host, port)
+
+	def _is_stopped(self, info_hash: bytes) -> bool:
+		"""A known torrent that is not running; unknown hashes keep their old behaviour."""
+		torrent_entity = get_torrent_entity(self.env, info_hash)
+		return torrent_entity is not None and not is_torrent_active(torrent_entity)
 
 	async def __on_torrent_added(self, entity: Entity, component: TorrentEC):
 		if entity.has_component(TorrentInfoEC):
@@ -214,6 +223,10 @@ class DHTSystem(System, DHTServerProtocolHandler):
 				logger.info(f'found {len(values)} peers for {info_hash}')
 				found_peers_count += len(values)
 				self._update_peers(info_hash, set(PeerInfo.from_bytes(v) for v in values))
+
+		# the torrent may have been stopped while the lookup ran: don't advertise it
+		if self._is_stopped(info_hash):
+			return
 
 		join_nodes = sorted((node for node in all_nodes.values() if node.token),
 		                    key=lambda n: distance(info_hash, n.node_id))[:self.BUCKET_CAPACITY]

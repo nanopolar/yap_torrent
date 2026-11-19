@@ -8,6 +8,7 @@
   "max_connections": 50,
   "dht_port": 6999,
   "upload_enabled": true,
+  "stop_on_complete": false,
   "use_log_file": false,
   "yap_torrent_transmission_rpc": {
     "host": "0.0.0.0",

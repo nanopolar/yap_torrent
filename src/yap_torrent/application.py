@@ -12,6 +12,7 @@ from yap_torrent.config import Config
 from yap_torrent.env import Env
 from yap_torrent.systems.announce_system import AnnounceSystem
 from yap_torrent.systems.choke_system import ChokeSystem
+from yap_torrent.systems.completion_system import CompletionSystem
 from yap_torrent.systems.dht_system import DHTSystem
 from yap_torrent.systems.download_system import DownloadSystem
 from yap_torrent.systems.ext_metadata_system import ExtMetadataSystem
@@ -78,6 +79,8 @@ class Application:
 			DHTSystem(env),
 			MagnetSystem(env),
 			TorrentSystem(env),
+			# finished torrents are stopped rather than seeded (config: stop_on_complete)
+			CompletionSystem(env),
 			LocalDataSystem(env),
 			PeerDataSystem(env),
 			WatcherSystem(env),

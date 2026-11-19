@@ -50,6 +50,7 @@ from yap_torrent.systems import (
 	iterate_connected_peers,
 )
 from yap_torrent.systems.choke_system import ChokeSystem
+from yap_torrent.systems.completion_system import CompletionSystem
 from yap_torrent.systems.download_system import DownloadSystem
 from yap_torrent.systems.file_system import FileSystem
 from yap_torrent.systems.intrest_system import InterestedSystem
@@ -800,6 +801,51 @@ async def scenario_good_peers_survive_a_restart(work: Path) -> bool:
 	return ok
 
 
+async def scenario_stop_on_complete(work: Path) -> bool:
+	# leecher with CompletionSystem: finishes, stops itself, drops the seeder, file intact on disk
+	content = __import__("os").urandom(40000)  # 3 pieces
+	meta = single_file(content)
+	ih = meta.make_info_hash()
+
+	seeder = Instance(6841, work / "s_soc_seed", b"-PY0001-SEEDER0SOC01")
+	leecher = Instance(6842, work / "s_soc_leech", b"-PY0001-LEECHER0SOC1")
+	leecher.systems.append(CompletionSystem(leecher.env))
+	write_files(seeder.env.config.download_folder, meta.info, content)
+	await seeder.start();
+	await leecher.start()
+
+	seed = create_torrent_entity(seeder.env, ih, seeder.env.config.download_folder, {}, meta.info)
+	for i in range(meta.info.pieces_num):
+		seed.get_component(TorrentEC).bitfield.set_index(i)
+	create_torrent_entity(leecher.env, ih, leecher.env.config.download_folder, {}, meta.info)
+
+	await settle([seeder, leecher], 3)
+	leecher.env.event_bus.dispatch("peers.update", ih, [PeerInfo("127.0.0.1", 6841)])
+	leech = get_torrent_entity(leecher.env, ih)
+	on_disk = leecher.env.config.download_folder / "swarmfile.bin"
+
+	def stopped_and_quiet() -> bool:
+		return (is_torrent_complete(leech)
+		        and leech.get_component(TorrentStatsEC).state == TorrentState.Inactive
+		        and not any(True for _ in iterate_connected_peers(leecher.env, ih))
+		        and not any(True for _ in iterate_connected_peers(seeder.env, ih)))
+
+	ok = await run_until([seeder, leecher], stopped_and_quiet)
+	ok = ok and await run_until([seeder, leecher],
+	                            lambda: on_disk.exists() and on_disk.read_bytes() == content, rounds=40)
+
+	# and it stays down: a reconnect attempt from the seeder's side is refused
+	if ok:
+		seeder.env.event_bus.dispatch("peers.update", ih, [PeerInfo("127.0.0.1", 6842)])
+		await settle([seeder, leecher], 20, sleep=0.05)
+		ok = (leech.get_component(TorrentStatsEC).state == TorrentState.Inactive
+		      and not any(True for _ in iterate_connected_peers(leecher.env, ih)))
+
+	await leecher.stop();
+	await seeder.stop()
+	return ok
+
+
 def _peer_records(path: Path):
 	if not path.exists():
 		return []
@@ -825,6 +871,7 @@ SCENARIOS = [
 	("a restarted session restores its torrent and seeds", scenario_restart_restores_torrent),
 	("queue order and paused state survive a restart", scenario_restart_restores_queue_and_paused_state),
 	("good peers survive a restart, inbound ports are not kept", scenario_good_peers_survive_a_restart),
+	("stop_on_complete: a finished torrent stops and goes quiet", scenario_stop_on_complete),
 ]
 
 

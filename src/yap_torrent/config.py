@@ -95,6 +95,9 @@ class Config:
 
 		self.seed_ratio_limit: float = float(data.get("seed_ratio_limit", 2.0))
 		self.seed_ratio_limited: bool = as_bool(data.get("seed_ratio_limited", False))
+		# stop a torrent the moment it finishes instead of seeding it. Set
+		# "stop_on_complete": false in config.json to keep finished torrents running.
+		self.stop_on_complete: bool = as_bool(data.get("stop_on_complete", True))
 
 		self.download_queue_enabled: bool = as_bool(data.get("download_queue_enabled", False))
 		self.download_queue_size: int = int(data.get("download_queue_size", 0))

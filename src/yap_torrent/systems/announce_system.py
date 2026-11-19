@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import time
+from collections import defaultdict
 
 from angelovich.core.DataStorage import Entity
 from angelovich.core.System import System
@@ -33,6 +35,9 @@ class AnnounceSystem(System):
 
 	async def start(self):
 		await super().start()
+		# one announce at a time per torrent: events arrive as concurrent tasks, and a
+		# "stopped" must not overtake the "completed" or "started" raised just before it
+		self._announce_locks: defaultdict[bytes, asyncio.Lock] = defaultdict(asyncio.Lock)
 		self.add_listener("action.torrent.complete", self._on_torrent_complete)
 		self.add_listener("action.torrent.stop", self._on_torrent_stop)
 		self.add_listener("action.torrent.start", self._on_torrent_start)
@@ -80,6 +85,11 @@ class AnnounceSystem(System):
 
 	# event = "", "started", "completed", "stopped"
 	async def __tracker_announce(self, torrent_entity: Entity, event: str = ""):
+		info_hash = torrent_entity.get_component(TorrentEC).info_hash
+		async with self._announce_locks[info_hash]:
+			await self.__tracker_announce_locked(torrent_entity, event)
+
+	async def __tracker_announce_locked(self, torrent_entity: Entity, event: str = ""):
 		peer_id = self.env.peer_id
 		external_ip = self.env.external_ip
 		port = self.env.config.port

@@ -12,6 +12,8 @@ It's aimed to be simple, easy to use and extend.
 * Endgame algorithm
 * Rarest first algorithm
 * Choke algorithm (tit-for-tat, client-wide upload budget)
+* Stop on completion — a finished torrent is stopped instead of seeded. Set
+  `"stop_on_complete": false` in `config.json` to keep seeding.
 * Download queue ordered by torrent priority
 * Plugins system
 * Headless mode
