@@ -8,6 +8,7 @@ It's aimed to be simple, easy to use and extend.
 * DHT protocol [BEP:5](https://bittorrent.org/beps/bep_0005.html)
 * Extensions protocol [BEP:10](https://bittorrent.org/beps/bep_0010.html)
 * Metadata extension, magnet URI support [BEP:9](https://bittorrent.org/beps/bep_0009.html)
+* UDP tracker protocol [BEP:15](https://bittorrent.org/beps/bep_0015.html)
 * Endgame algorithm
 * Rarest first algorithm
 * Choke algorithm (tit-for-tat, client-wide upload budget)

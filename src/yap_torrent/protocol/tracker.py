@@ -1,14 +1,44 @@
 import logging
+from urllib.parse import urlsplit
 
 import aiohttp
 
 from yap_torrent.protocol import decode
 from yap_torrent.protocol.structures import TrackerAnnounceResponse
+from yap_torrent.protocol.udp_tracker import make_udp_announce
 
 logger = logging.getLogger(__name__)
 
 
 async def make_announce(
+		announce: str,
+		info_hash: bytes,
+		peer_id: bytes,
+		downloaded: int = 0,
+		uploaded: int = 0,
+		left: int = 0,
+		ip: str = "127.0.0.1",
+		port=6881,
+		compact=1,
+		event="",
+		tracker_id: bytes = b'',
+		timeout=10.
+) -> TrackerAnnounceResponse | None:
+	"""Announce to one tracker, over HTTP(S) or UDP depending on its URL."""
+	scheme = urlsplit(announce).scheme.lower()
+	if scheme == "udp":
+		return await make_udp_announce(
+			announce, info_hash, peer_id,
+			downloaded=downloaded, uploaded=uploaded, left=left, port=port, event=event)
+	if scheme in ("http", "https"):
+		return await _make_http_announce(
+			announce, info_hash, peer_id, downloaded, uploaded, left, ip, port, compact, event,
+			tracker_id, timeout)
+	logger.warning("Unsupported tracker protocol '%s', skipping %s", scheme, announce)
+	return None
+
+
+async def _make_http_announce(
 		announce: str,
 		info_hash: bytes,
 		peer_id: bytes,
